@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Owner Dashboard – Jhundel Siomai House</title>
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:Inter,Arial,sans-serif;}
+body{background:#f2f4f7;color:#222;}
+
+header{
+  background:#d70f64;
+  color:#fff;
+  padding:16px;
+  font-size:20px;
+  font-weight:600;
+}
+
+.container{
+  padding:16px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:16px;
+}
+
+.card{
+  background:#fff;
+  border-radius:14px;
+  padding:16px;
+  box-shadow:0 8px 24px rgba(0,0,0,.06);
+}
+
+.order{
+  border:1px solid #eee;
+  border-radius:12px;
+  padding:12px;
+  margin-bottom:12px;
+}
+
+.row{
+  display:flex;
+  justify-content:space-between;
+  margin-top:6px;
+  gap:8px;
+}
+
+button{
+  padding:6px 12px;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+  font-weight:600;
+}
+
+.preparing{background:#f59e0b;color:#fff;}
+.ready{background:#2563eb;color:#fff;}
+.done{background:#16a34a;color:#fff;}
+.cancel{background:#dc2626;color:#fff;}
+
+.stock{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:10px 0;
+  border-bottom:1px solid #eee;
+}
+
+.stock button{border-radius:20px;}
+
+.in{background:#16a34a;color:#fff;}
+.out{background:#dc2626;color:#fff;}
+
+.stats{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  margin-bottom:16px;
+}
+
+@media(max-width:768px){
+  .container{grid-template-columns:1fr;}
+}
+</style>
+</head>
+
+<body>
+
+<header>Owner Dashboard</header>
+
+<!-- 🔔 Notification Sound -->
+<audio id="notify">
+  <source src="https://assets.mixkit.co/sfx/preview/mixkit-bell-notification-933.mp3">
+</audio>
+
+<div class="container">
+
+<!-- ORDERS -->
+<div class="card">
+  <h3>Active Orders</h3>
+  <div id="orders"></div>
+</div>
+
+<!-- RIGHT -->
+<div>
+  <div class="card stats">
+    <div>
+      <h4>Total Today</h4>
+      <strong id="todayTotal">₱0</strong>
+    </div>
+    <div>
+      <h4>Total This Month</h4>
+      <strong id="monthTotal">₱0</strong>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Stock Control</h3>
+    <div id="stocks"></div>
+  </div>
+</div>
+
+</div>
+
+<script>
+const ordersDiv = document.getElementById('orders');
+const stocksDiv = document.getElementById('stocks');
+const notify = document.getElementById('notify');
+
+let products = JSON.parse(localStorage.getItem('products')) || [];
+let lastCount = Number(localStorage.getItem('lastOrderCount')) || 0;
+const todayKey = new Date().toDateString();
+
+/* ===== AUTO CLEAR DAILY ===== */
+if(localStorage.getItem('lastDay') !== todayKey){
+  localStorage.setItem('orders', JSON.stringify([]));
+  localStorage.setItem('lastDay', todayKey);
+  localStorage.setItem('lastOrderCount', 0);
+}
+
+/* ===== ORDERS ===== */
+function getOrders(){
+  return JSON.parse(localStorage.getItem('orders')) || [];
+}
+
+function saveOrders(o){
+  localStorage.setItem('orders', JSON.stringify(o));
+}
+
+function renderOrders(){
+  const orders = getOrders().filter(o => !['done','cancelled'].includes(o.status));
+  ordersDiv.innerHTML = orders.length ? '' : '<small>No active orders</small>';
+
+  orders.forEach(o=>{
+    ordersDiv.innerHTML += `
+      <div class="order">
+        <strong>${o.customer}</strong> (${o.mode.toUpperCase()})<br>
+        <small>${o.time}</small>
+        ${o.address ? `<div><small><b>Address:</b> ${o.address}</small></div>` : ''}
+
+        ${o.items.map(it=>`
+          <div class="row">
+            <span>${it.name} x${it.qty}</span>
+            <strong>₱${it.price*it.qty}</strong>
+          </div>`).join('')}
+
+        <div class="row">
+          ${statusButtons(o)}
+          <button class="cancel" onclick="cancelOrder('${o.time}')">CANCEL</button>
+        </div>
+      </div>`;
+  });
+}
+
+function statusButtons(o){
+  if(o.status==='preparing')
+    return `<button class="ready" onclick="updateStatus('${o.time}','ready')">READY</button>`;
+  if(o.status==='ready')
+    return `<button class="done" onclick="updateStatus('${o.time}','done')">DONE</button>`;
+  return '';
+}
+
+function updateStatus(time,status){
+  const orders = getOrders().map(o =>
+    o.time===time ? {...o,status} : o
+  );
+  saveOrders(orders);
+  renderOrders();
+}
+
+function cancelOrder(time){
+  if(!confirm('Cancel this order?')) return;
+  const orders = getOrders().map(o =>
+    o.time===time ? {...o,status:'cancelled'} : o
+  );
+  saveOrders(orders);
+  renderOrders();
+}
+
+/* ===== STOCK ===== */
+function renderStocks(){
+  products = JSON.parse(localStorage.getItem('products')) || [];
+  stocksDiv.innerHTML='';
+  products.forEach(p=>{
+    stocksDiv.innerHTML += `
+      <div class="stock">
+        <span>${p.name} (${p.pcs}pcs)</span>
+        <button class="${p.available?'in':'out'}"
+          onclick="toggleStock(${p.id})">
+          ${p.available?'IN STOCK':'OUT OF STOCK'}
+        </button>
+      </div>`;
+  });
+}
+
+function toggleStock(id){
+  products = products.map(p =>
+    p.id===id ? {...p,available:!p.available} : p
+  );
+  localStorage.setItem('products', JSON.stringify(products));
+  renderStocks();
+}
+
+/* ===== SALES ===== */
+function calculateSales(){
+  const orders = getOrders().filter(o=>o.status!=='cancelled');
+  let today=0, month=0;
+  const now=new Date();
+
+  orders.forEach(o=>{
+    const d=new Date(o.date);
+    if(d.toDateString()===todayKey) today+=o.total;
+    if(d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear())
+      month+=o.total;
+  });
+
+  todayTotal.textContent='₱'+today;
+  monthTotal.textContent='₱'+month;
+}
+
+/* ===== ORDER NOTIFICATION SOUND ===== */
+function checkNewOrders(){
+  const orders = getOrders();
+  if(orders.length > lastCount){
+    notify.play(); // 🔔 SOUND
+    lastCount = orders.length;
+    localStorage.setItem('lastOrderCount', lastCount);
+  }
+  renderOrders();
+  calculateSales();
+}
+
+renderStocks();
+checkNewOrders();
+setInterval(checkNewOrders,2000);
+</script>
+
+</body>
+</html>
